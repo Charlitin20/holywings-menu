@@ -319,6 +319,12 @@ fieldset.need legend{color:var(--red)}
 .logo{transform-origin:center}
 .mast .row{justify-content:center}
 .hrs{margin-left:auto;margin-right:auto;text-align:left}
+.locbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;border:2px solid var(--ink);background:transparent;color:var(--ink);border-radius:12px;padding:10px 12px;font-weight:700;font-size:15px}
+.locbtn:disabled{opacity:.6}
+.locok{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;background:var(--pick);border:2px solid var(--ink);border-radius:12px;padding:9px 12px;font-size:14px;font-weight:600}
+.locok span{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.locok a{color:var(--ink)}
+.locmsg{margin:6px 0 0;font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -615,20 +621,28 @@ function commitItem(){
 }
 
 // ---------- cart sheet ----------
-let form={name:"",mode:"Recoger en el local",addr:"",pay:"Efectivo",notes:""};
+let form={name:"",mode:"Recoger en el local",addr:"",loc:"",pay:"Efectivo",notes:""};
+let locState="";
 try{ Object.assign(form, JSON.parse(localStorage.getItem("holywings-form")||"{}")); }catch(e){}
 function saveForm(){ try{ localStorage.setItem("holywings-form",JSON.stringify(form)); }catch(e){} }
 function message(){
-  const t=totals();
-  let m="Hola Holy Wings, quiero hacer este pedido:\n\n";
-  cart.forEach(l=>{ m+=`${l.qty}× ${l.name}${l.opts?` (${l.opts})`:""} — ${fmt(l.unit*l.qty)}\n`; if(l.note&&l.note.trim()) m+=`   ↳ ${l.note.trim()}\n`; });
-  m+=`\nSubtotal: ${fmt(t.sub)}`;
+  const t=totals(), L="━━━━━━━━━━━━━━";
+  let m="¡Hola Holy Wings! 👋 Quiero hacer este pedido:\n\n";
+  cart.forEach(l=>{
+    m+=`*${l.qty}× ${l.name}* — ${fmt(l.unit*l.qty)}\n`;
+    (l.opts?l.opts.split(" · "):[]).forEach(o=>{ m+=`   • ${o}\n`; });
+    if(l.note&&l.note.trim()) m+=`   ✏️ _${l.note.trim()}_\n`;
+    m+="\n";
+  });
+  m+=`${L}\nSubtotal: ${fmt(t.sub)}`;
   if(t.disc) m+=`\nPromo 2x1: −${fmt(t.disc)}`;
   if(t.x) m+=`\n10% de servicio: ${fmt(t.x)}`;
-  m+=`\nTotal: ${fmt(t.total)}\n\nNombre: ${form.name.trim()}\nEntrega: ${form.mode}`;
-  if(form.mode==="Express") m+=`\nDirección: ${form.addr.trim()}`;
-  m+=`\nPago: ${form.pay}`;
-  if(form.notes.trim()) m+=`\nNotas generales: ${form.notes.trim()}`;
+  m+=`\n*TOTAL: ${fmt(t.total)}*\n${L}\n\n`;
+  m+=`👤 *Nombre:* ${form.name.trim()}\n`;
+  m+=`${form.mode==="Express"?"🛵":"🏪"} *Entrega:* ${form.mode}\n`;
+  if(form.mode==="Express"){ if(form.addr.trim()) m+=`🏠 *Dirección:* ${form.addr.trim()}\n`; if(form.loc) m+=`📍 *Ubicación:* https://maps.google.com/?q=${form.loc}\n`; }
+  m+=`💳 *Pago:* ${form.pay}`;
+  if(form.notes.trim()) m+=`\n📝 *Notas:* ${form.notes.trim()}`;
   return m;
 }
 let editNote=null;
@@ -636,7 +650,7 @@ function closeNote(){ if(editNote===null) return; const l=cart[editNote]; if(l &
 function showErrors(){
   const miss=[];
   if(!form.name.trim()) miss.push("fName");
-  if(form.mode==="Express"&&!form.addr.trim()) miss.push("fAddr");
+  if(form.mode==="Express"&&!form.addr.trim()&&!form.loc) miss.push("fAddr");
   miss.forEach(id=>{ const el=document.getElementById(id); if(el) el.setAttribute("aria-invalid","true"); const fe=document.getElementById(id+"-err"); if(fe) fe.hidden=false; });
   const er=$("#err");
   if(er){
@@ -648,7 +662,23 @@ function showErrors(){
   if((!DEMO&&!isOpen())||!cart.every(l=>avail(ITEMS[l.id]))){ er&&er.scrollIntoView({block:"center",behavior:"smooth"}); }
   const first=miss[0]&&document.getElementById(miss[0]); if(first){ first.scrollIntoView({block:"center",behavior:"smooth"}); first.focus({preventScroll:true}); }
 }
-function valid(){ return cart.length && (DEMO||isOpen()) && cart.every(l=>avail(ITEMS[l.id])) && form.name.trim() && (form.mode!=="Express"||form.addr.trim()); }
+function valid(){ return cart.length && (DEMO||isOpen()) && cart.every(l=>avail(ITEMS[l.id])) && form.name.trim() && (form.mode!=="Express"||form.addr.trim()||form.loc); }
+const PIN='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+function locHTML(){
+  if(form.loc) return `<div class="locok"><span>${PIN} Ubicación agregada · <a href="https://maps.google.com/?q=${form.loc}" target="_blank" rel="noopener">ver en el mapa</a></span><button type="button" class="linkbtn" id="clearLoc">Quitar</button></div>`;
+  return `<button type="button" class="locbtn" id="getLoc" ${locState==="busy"?"disabled":""}>${PIN}${locState==="busy"?"Buscando tu ubicación…":"Usar mi ubicación actual"}</button>${locState&&locState!=="busy"?`<p class="locmsg">${esc(locState)}</p>`:""}`;
+}
+function getLoc(){
+  if(!navigator.geolocation){ locState="Tu navegador no permite compartir la ubicación. Escribí la dirección."; renderCart(); return; }
+  locState="busy"; renderCart();
+  navigator.geolocation.getCurrentPosition(p=>{
+    form.loc=p.coords.latitude.toFixed(6)+","+p.coords.longitude.toFixed(6); locState=""; saveForm(); renderCart();
+  },err=>{
+    locState = err.code===1 ? "No diste permiso para la ubicación. Podés activarlo en el navegador o escribir la dirección." : "No pudimos obtener tu ubicación. Escribí la dirección.";
+    renderCart();
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+}
+
 function seg(name,vals,cur){ return `<div class="seg">${vals.map((v,i)=>`<label class="opt"><input type="radio" name="${name}" id="${name}${i}" value="${v}" ${cur===v?"checked":""}><span>${v}</span></label>`).join("")}</div>`; }
 function renderCart(){
   const t=totals();
@@ -663,7 +693,7 @@ function renderCart(){
   <div class="sum"><div><span>Subtotal</span><b>${fmt(t.sub)}</b></div>${t.disc?`<div style="color:var(--basil)"><span>Promo 2x1</span><b>−${fmt(t.disc)}</b></div>`:""}${t.promoOdd?`<div style="color:var(--red);font-weight:600"><span>Hoy es 2x1: agregá otra y te sale gratis</span></div>`:""}${t.x?`<div><span>10% de servicio</span><b>${fmt(t.x)}</b></div>`:""}<div class="t"><span>Total</span><b>${fmt(t.total)}</b></div></div>
   <fieldset><legend>Entrega</legend>${seg("mode",["Recoger en el local","Express"],form.mode)}</fieldset>
   <div class="field"><label for="fName">Nombre<span class="req">Obligatorio</span></label><input id="fName" autocomplete="name" required aria-describedby="fName-err" value="${esc(form.name)}" placeholder="¿A nombre de quién?"><p class="ferr" id="fName-err" hidden>Escribí tu nombre para enviar el pedido.</p></div>
-  ${form.mode==="Express"?`<div class="field"><label for="fAddr">Dirección de entrega<span class="req">Obligatorio</span></label><textarea id="fAddr" required aria-describedby="fAddr-err" placeholder="Barrio, señas y referencia">${esc(form.addr)}</textarea><p class="ferr" id="fAddr-err" hidden>Escribí la dirección para el express.</p></div>`:""}
+  ${form.mode==="Express"?`<div class="field"><label for="fAddr">Dirección de entrega<span class="req">Dirección o ubicación</span></label><textarea id="fAddr" required aria-describedby="fAddr-err" placeholder="Barrio, señas y referencia">${esc(form.addr)}</textarea>${locHTML()}<p class="ferr" id="fAddr-err" hidden>Escribí la dirección o agregá tu ubicación para el express.</p></div>`:""}
   <fieldset><legend>Forma de pago</legend>${seg("pay",["Efectivo","SINPE Móvil","Tarjeta"],form.pay)}</fieldset>
   <div class="field"><label for="fNotes">Notas generales del pedido (opcional)</label><input id="fNotes" value="${esc(form.notes)}" placeholder="Ej.: hora de recogida, vuelto para ₡10.000"></div>
   ${DEMO?`<p class="demo-box"><b>Modo demo:</b> al tocar el botón se abre WhatsApp con el pedido ya escrito. Si solo estás probando, no lo envíes.</p>`:""}
@@ -707,6 +737,8 @@ document.addEventListener("click",e=>{
   if(t.id==="addIt"){ commitItem(); return; }
   if(t.id==="openCart"){ renderCart(); openSheet("cart"); return; }
   if(t.id==="copyNum"){ copyText("60265828","Número copiado").then(ok=>{ if(!ok){ const r=document.createRange(); r.selectNodeContents($("#waNum")); getSelection().removeAllRanges(); getSelection().addRange(r); } }); return; }
+  if(t.id==="getLoc"){ getLoc(); return; }
+  if(t.id==="clearLoc"){ form.loc=""; saveForm(); renderCart(); return; }
   if(t.id==="copyMsg"){ const m=message(); copyText(m,"Pedido copiado").then(ok=>{ if(!ok){ const el=$("#msg"); el.textContent=m; el.hidden=false; } }); return; }
   if(d.note!==undefined){ const i=Number(d.note); if(editNote===i){ closeNote(); return; } editNote=i; renderCart(); const inp=document.getElementById("ln-"+i); if(inp){ inp.focus(); const n=inp.value.length; try{ inp.setSelectionRange(n,n); }catch(err){} } return; }
   if(t.id==="send" && !valid()){ e.preventDefault(); showErrors(); return; }
